@@ -4,6 +4,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -68,10 +72,10 @@ class DailyHubViewModel : ViewModel() {
     }
 }
 
-sealed class Routes(val route: String) {
-    object Notes : Routes("notes")
-    object Tasks : Routes("tasks")
-    object Calendar : Routes("calendar")
+sealed class Routes(val route: String, val index: Int) {
+    object Notes : Routes("notes", 0)
+    object Tasks : Routes("tasks", 1)
+    object Calendar : Routes("calendar", 2)
 }
 
 class MainActivity : ComponentActivity() {
@@ -88,12 +92,48 @@ class MainActivity : ComponentActivity() {
                 ) { innerPadding ->
                     NavHost(
                         navController = navController,
-                        startDestination = Routes.Notes.route,
-                        modifier = Modifier.padding(innerPadding)
+                        startDestination = "${Routes.Notes.route}?fromIndex=${Routes.Notes.index}",
+                        modifier = Modifier.padding(innerPadding),
+                        enterTransition = {
+                            val fromIndex = initialState.arguments?.getString("fromIndex")?.toIntOrNull() ?: 0
+                            val toIndex = when (targetState.destination.route?.substringBefore("?")) {
+                                Routes.Notes.route -> Routes.Notes.index
+                                Routes.Tasks.route -> Routes.Tasks.index
+                                Routes.Calendar.route -> Routes.Calendar.index
+                                else -> 0
+                            }
+                            if (toIndex > fromIndex) {
+                                slideInHorizontally(initialOffsetX = { it }) + fadeIn()
+                            } else {
+                                slideInHorizontally(initialOffsetX = { -it }) + fadeIn()
+                            }
+                        },
+                        exitTransition = {
+                            val fromIndex = initialState.arguments?.getString("fromIndex")?.toIntOrNull() ?: 0
+                            val toIndex = when (targetState.destination.route?.substringBefore("?")) {
+                                Routes.Notes.route -> Routes.Notes.index
+                                Routes.Tasks.route -> Routes.Tasks.index
+                                Routes.Calendar.route -> Routes.Calendar.index
+                                else -> 0
+                            }
+                            if (toIndex > fromIndex) {
+                                slideOutHorizontally(targetOffsetX = { -it / 3 }) + fadeOut()
+                            } else {
+                                slideOutHorizontally(targetOffsetX = { it / 3 }) + fadeOut()
+                            }
+                        }
                     ) {
-                        composable(Routes.Notes.route) { NotesScreen(viewModel) }
-                        composable(Routes.Tasks.route) { TasksScreen(viewModel) }
-                        composable(Routes.Calendar.route) { CalendarScreen() }
+                        composable(
+                            route = "${Routes.Notes.route}?fromIndex={fromIndex}",
+                        ) { NotesScreen(viewModel) }
+
+                        composable(
+                            route = "${Routes.Tasks.route}?fromIndex={fromIndex}",
+                        ) { TasksScreen(viewModel) }
+
+                        composable(
+                            route = "${Routes.Calendar.route}?fromIndex={fromIndex}",
+                        ) { CalendarScreen() }
                     }
                 }
             }
@@ -114,12 +154,18 @@ fun BottomNavBar(navController: NavHostController) {
         items.forEach { (route, icon) ->
             NavigationBarItem(
                 icon = { Icon(icon, contentDescription = null) },
-                selected = currentRoute == route.route,
+                selected = currentRoute?.substringBefore("?") == route.route,
                 onClick = {
-                    navController.navigate(route.route) {
+                    val fromIndex = when (currentRoute?.substringBefore("?")) {
+                        Routes.Notes.route -> Routes.Notes.index
+                        Routes.Tasks.route -> Routes.Tasks.index
+                        Routes.Calendar.route -> Routes.Calendar.index
+                        else -> 0
+                    }
+                    navController.navigate("${route.route}?fromIndex=$fromIndex") {
                         launchSingleTop = true
                         restoreState = true
-                        popUpTo(Routes.Notes.route) { saveState = true }
+                        popUpTo("${Routes.Notes.route}?fromIndex={fromIndex}") { saveState = true }
                     }
                 }
             )
